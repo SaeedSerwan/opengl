@@ -25,7 +25,6 @@
 | **`deploy` job fails with "Pages not enabled" or a 404** | **Settings → Pages → Source** must be **GitHub Actions**. Then re-run the workflow. |
 | **`npm ci` fails** | `package-lock.json` must be committed together with `package.json`. |
 | **Site shows the old version** | Students' browsers may cache for up to 10 minutes; a hard reload (Ctrl+F5) fixes it. The compiler cache is renamed automatically when the compiler version changes. |
-| **`verify` job fails but the site works** | The test job runs headless Chromium on GitHub's servers. Open the run's summary to see which check failed. A failed `verify` does not unpublish the site. |
 | **Repository is private** | GitHub Pages on free accounts needs a public repository. The code contains no secrets. |
 | **Hosting somewhere else** | Run `npm run build` and copy the `dist/` folder to any static web host. Only static files are needed; no special HTTP headers. |
 | **Very slow compiles on lab PCs** | The first compile after loading includes warm-up. Programs with `<iostream>` take longer; the precompiled header makes later ones faster. Close other heavy tabs; the compiler needs ~500 MB of RAM. |

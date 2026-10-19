@@ -1,0 +1,21 @@
+{
+  "name": "opengl-classroom",
+  "version": "1.0.0",
+  "description": "A free, browser-based C++ / legacy OpenGL (GLUT) playground for teaching introductory computer graphics.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "serve": "node scripts/serve.mjs",
+    "test": "node tests/acceptance.mjs"
+  },
+  "dependencies": {
+    "@yowasp/clang": "22.0.0-git20542-10",
+    "codemirror": "5.65.21"
+  },
+  "devDependencies": {
+    "playwright-core": "1.56.1",
+    "pngjs": "^7.0.0"
+  }
+}

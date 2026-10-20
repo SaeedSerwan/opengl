@@ -1,9 +1,11 @@
 # OpenGL Classroom
 
+### ▶ Open the website: **[saeedserwan.github.io/opengl](https://saeedserwan.github.io/opengl/)**
+
 **A free, browser-based C++ / OpenGL playground for teaching introductory computer graphics.**
 Students open a link, write ordinary C++ with classic OpenGL (`glBegin`, `glVertex2f`, `glTranslatef`, GLUT …), press **Run**, and see the result. Nothing has to be installed and no account is needed. There is no server either.
 
-![OpenGL Classroom](docs/screenshot.png)
+[![OpenGL Classroom](docs/screenshot.png)](https://saeedserwan.github.io/opengl/)
 
 * Real C++17: your code is compiled by **Clang/LLVM running inside the browser** (WebAssembly). No server compiles anything.
 * Classic OpenGL 1.x + GLUT/FreeGLUT through a compatibility layer on WebGL. See **[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)** for the full list.

@@ -75,7 +75,7 @@ npm test -- --url https://saeedserwan.github.io/opengl/   # test the deployed si
  └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
-* **Compilation really happens.** `clang++ -std=c++17 -O1 main.cpp -o program.wasm` runs in a Web Worker. Errors come straight from Clang. The page never fakes a successful compile.
+* **Compilation really happens.** `clang++ -std=c++17 -O0 main.cpp -o program.wasm` runs in a Web Worker. Errors come straight from Clang. The page never fakes a successful compile.
 * **The graphics really come from the program.** The OpenGL headers declare each function as a WebAssembly import. When the compiled program calls `glVertex2f`, the call goes to `js/runtime/legacygl.js`, which implements the fixed-function pipeline (matrix stacks, primitive assembly, lighting) and rasterises with WebGL. Nothing on the page draws a substitute picture. (The optional grid/axes overlay is a separate transparent layer.)
 * **`glutMainLoop()`** cannot block a browser. It unwinds out of `main()` (just as Emscripten does) and then the browser's event loop calls the program's display, timer, idle, keyboard and mouse callbacks.
 * **Isolation.** Each Run gets a fresh Web Worker, canvas and WebGL context. **Stop**, re-running and infinite loops terminate the worker, which frees all its memory, timers and GPU resources. A watchdog stops programs that stop responding for 5 seconds.

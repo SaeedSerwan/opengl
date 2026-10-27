@@ -198,8 +198,8 @@ export class Program {
       glClear: (m) => d('glClear', m),
       glClearColor: (r, gg, b, a) => d('glClearColor', r, gg, b, a),
       glClearDepth: (x) => d('glClearDepth', x),
-      glFlush: () => {},
-      glFinish: () => {},
+      glFlush: () => this.present(false),
+      glFinish: () => this.present(false),
       glColorMask: (r, gg, b, a) => d('glColorMask', r, gg, b, a),
       glDepthMask: (f) => d('glDepthMask', f),
       glDepthFunc: (f) => d('glDepthFunc', f),
@@ -329,7 +329,7 @@ export class Program {
     const setCb = (name) => (idx) => { this.cb[name] = idx ? this.fn(idx) : null; if (name === 'idle') this.schedule(); };
     return {
       glutInit: () => { this.startTime = performance.now(); },
-      glutInitDisplayMode: () => {},
+      glutInitDisplayMode: (mode) => { this.doubleBuffered = (mode & 2) !== 0; },
       glutInitWindowSize: (w, h) => this.resize(w, h),
       glutInitWindowPosition: () => {},
       glutCreateWindow: (p) => {
@@ -352,7 +352,7 @@ export class Program {
       },
       glutLeaveMainLoop: () => { throw new LeaveMainLoop(); },
       glutPostRedisplay: () => { this.redisplay = true; this.schedule(); },
-      glutSwapBuffers: () => {},
+      glutSwapBuffers: () => this.present(false),
       glutDisplayFunc: setCb('display'),
       glutReshapeFunc: setCb('reshape'),
       glutKeyboardFunc: setCb('keyboard'),
@@ -422,7 +422,7 @@ export class Program {
   async start(wasmBytes) {
     this.post({ type: 'size', width: this.canvas.width, height: this.canvas.height });
     const module = await WebAssembly.compile(wasmBytes);
-    const wasi = createWasi({ getMemory: () => this.mem, write: (fd, b) => this.write(fd, b), stdinText: this.stdin });
+    const wasi = createWasi({ getMemory: () => this.mem, write: (fd, b) => this.write(fd, b), stdinText: this.stdin, onSleep: () => this.present(true) });
     const imports = { wasi_snapshot_preview1: wasi, gl: this.buildGLImports(module) };
     // A program could also import from "env" if it declares functions without bodies.
     for (const imp of WebAssembly.Module.imports(module)) {
@@ -433,6 +433,7 @@ export class Program {
     this.instance = await WebAssembly.instantiate(module, imports);
     this.state = 'main';
     this.post({ type: 'status', state: 'running' });
+    this.cbStart = performance.now();
     try {
       this.instance.exports._start();
       this.finish(0);
@@ -443,6 +444,7 @@ export class Program {
   }
 
   enterMainLoop() {
+    this.endBlits();
     this.flushStdio();
     this.state = 'running';
     if (!this.cb.display) {
@@ -468,7 +470,18 @@ export class Program {
   frame() {
     this.frameScheduled = false;
     if (this.state !== 'running') return;
-    if (this.cb.idle) this.invoke(this.cb.idle);
+    if (this.cb.idle) {
+      // On a desktop PC, GLUT calls the idle function as fast as it can: with a
+      // single buffer that is roughly a thousand times per second, with
+      // GLUT_DOUBLE it is usually once per screen refresh. We do the same, so
+      // animations written for the lab PCs run at a similar speed here.
+      const n = this.doubleBuffered ? 1 : 16;
+      const t0 = performance.now();
+      for (let i = 0; i < n && this.state === 'running' && this.cb.idle; i++) {
+        this.invoke(this.cb.idle);
+        if (performance.now() - t0 > 8) break;
+      }
+    }
     if (this.state !== 'running') return;
     if (this.redisplay) {
       this.redisplay = false;
@@ -488,13 +501,42 @@ export class Program {
 
   invoke(f, ...args) {
     if (!f || (this.state !== 'running' && this.state !== 'main')) return;
+    this.cbStart = performance.now();
     try {
       f(...args);
       this.flushStdio();
     } catch (e) {
       if (e === MAIN_LOOP) return;
       this.handleError(e);
+    } finally {
+      this.endBlits();
     }
+  }
+
+  // ---------- showing frames while a callback is still running ----------
+  // A desktop program can animate inside one function: draw, glFlush(),
+  // Sleep(), draw again ... In the browser a picture normally appears only
+  // when the function returns, so for long-running code we copy the current
+  // picture to the page ourselves (at most ~60 times per second).
+  present(fromSleep) {
+    const now = performance.now();
+    if (!fromSleep && now - this.cbStart < 40) return;   // short callbacks: normal path
+    if (now - (this.lastBlit || 0) < 15 && !fromSleep) return;
+    if (fromSleep && now - (this.lastBlit || 0) < 8) return;
+    this.lastBlit = now;
+    this.blitting = true;
+    const g = this.gl.gl, w = this.canvas.width, h = this.canvas.height;
+    const px = new Uint8Array(w * h * 4);
+    g.readPixels(0, 0, w, h, g.RGBA, g.UNSIGNED_BYTE, px);
+    this.flushOut();
+    this.post({ type: 'blit', width: w, height: h, pixels: px }, [px.buffer]);
+  }
+  endBlits() {
+    if (!this.blitting) return;
+    this.blitting = false;
+    this.lastBlit = 0;
+    // The normal frame is shown when this task ends; then the copy is hidden.
+    setTimeout(() => this.post({ type: 'blit-end' }), 0);
   }
 
   flushStdio() {

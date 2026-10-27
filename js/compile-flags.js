@@ -2,7 +2,7 @@
 // and the build script (scripts/build.mjs, which precompiles sysroot/prelude/prelude.h
 // with exactly the same compile flags).
 export const COMPILE_FLAGS = [
-  '-std=c++17', '-O1', '-fno-exceptions', '-fno-color-diagnostics',
+  '-std=c++17', '-O0', '-fno-exceptions', '-fno-color-diagnostics',
   '-Wall', '-Wno-unused-parameter', '-Wno-unused-variable', '-Wno-unused-function',
   '-Wno-unused-but-set-variable', '-Wno-unused-const-variable',
   '-Iinclude',

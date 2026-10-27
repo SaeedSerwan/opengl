@@ -13,7 +13,7 @@ export class ExitStatus extends Error {
 
 const ESUCCESS = 0, EBADF = 8, EINVAL = 28, ENOSYS = 52, ESPIPE = 70;
 
-export function createWasi({ getMemory, write, stdinText = '', args = ['program'] }) {
+export function createWasi({ getMemory, write, stdinText = '', args = ['program'], onSleep = () => {} }) {
   const enc = new TextEncoder();
   const stdin = enc.encode(stdinText);
   let stdinPos = 0;
@@ -122,6 +122,7 @@ export function createWasi({ getMemory, write, stdinText = '', args = ['program'
         }
       }
       const ms = Math.min(2000, Number(waitNs) / 1e6);
+      onSleep();   // show what has been drawn so far (desktop programs animate with Sleep)
       const end = performance.now() + ms;
       while (performance.now() < end) { /* wait */ }
       for (let i = 0; i < nsubs; i++) {

@@ -359,7 +359,28 @@ function stopProgram(reason) {
   if (reason && wasRunning) { sys(reason); setStatus('idle', reason); }
 }
 
+// Frames copied from a program that animates inside one function (draw, glFlush, Sleep, ...).
+let blitGen = 0;
+function showBlit(m) {
+  blitGen++;
+  const c = $('blit');
+  if (c.width !== m.width || c.height !== m.height) { c.width = m.width; c.height = m.height; }
+  const ctx = c.getContext('2d');
+  const img = new ImageData(new Uint8ClampedArray(m.pixels.buffer || m.pixels), m.width, m.height);
+  // WebGL rows start at the bottom: draw the image upside down.
+  if (!showBlit.tmp) showBlit.tmp = document.createElement('canvas');
+  const t = showBlit.tmp; t.width = m.width; t.height = m.height;
+  t.getContext('2d').putImageData(img, 0, 0);
+  ctx.save(); ctx.setTransform(1, 0, 0, -1, 0, m.height); ctx.drawImage(t, 0, 0); ctx.restore();
+  c.hidden = false;
+}
+function hideBlit() {
+  const gen = blitGen;
+  requestAnimationFrame(() => requestAnimationFrame(() => { if (gen === blitGen) $('blit').hidden = true; }));
+}
+
 function removeCanvas() {
+  $('blit').hidden = true;
   if (runner && runner.canvas) runner.canvas.remove();
   runner = null;
 }
@@ -367,6 +388,8 @@ function removeCanvas() {
 function handleRunnerMessage(m) {
   switch (m.type) {
     case 'pong': lastPong = performance.now(); break;
+    case 'blit': showBlit(m); window.__oglc.blits = (window.__oglc.blits || 0) + 1; break;
+    case 'blit-end': hideBlit(); break;
     case 'output': out(m.text, m.stream); break;
     case 'size':
       canvasW = m.width; canvasH = m.height;
@@ -411,7 +434,7 @@ function startProgram(wasm) {
   canvas.tabIndex = 0;
   canvas.width = 500; canvas.height = 500;
   canvas.setAttribute('aria-label', 'Graphics output of your program');
-  $('canvas-box').insertBefore(canvas, $('overlay'));
+  $('canvas-box').insertBefore(canvas, $('blit'));
   $('placeholder').hidden = true;
   attachInput(canvas);
   buttons = 0;
@@ -426,7 +449,7 @@ function startProgram(wasm) {
     spareRunner = null;
     setTimeout(prepareRunner, 800);
     runner = { worker, canvas };
-    worker.onmessage = (e) => { if (runner && runner.worker === worker) handleRunnerMessage(e.data); };
+    worker.onmessage = (e) => { if (runner && runner.worker === worker) { lastPong = performance.now(); handleRunnerMessage(e.data); } };
     worker.onerror = (e) => { if (runner && runner.worker === worker) handleRunnerMessage({ type: 'runtime-error', message: 'The program runner failed: ' + (e.message || 'unknown error'), functions: [] }); };
     const off = canvas.transferControlToOffscreen();
     worker.postMessage({ type: 'start', canvas: off, wasm, stdin: $('stdin').value }, [off, wasm.buffer]);

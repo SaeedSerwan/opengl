@@ -109,7 +109,7 @@ There is exactly **one window**: the Graphics Output panel.
 | `glutDisplayFunc`, `glutPostRedisplay` | ✅ | Redraws are synchronised to the screen refresh (≈60 Hz) |
 | `glutSwapBuffers` | ✅ | |
 | `glutReshapeFunc` | ✅ | Called once at start (and after `glutReshapeWindow`). Resizing the panel scales the picture instead of resizing the window |
-| `glutIdleFunc` | 🟡 | Called once per screen refresh (≈60×/s) instead of "as fast as possible" |
+| `glutIdleFunc` | 🟡 | Single-buffered programs: called about 1000×/s, similar to a desktop PC. With `GLUT_DOUBLE`: once per screen refresh (≈60×/s), like a desktop with v-sync. The picture is shown at the screen refresh rate |
 | `glutTimerFunc` | ✅ | |
 | `glutKeyboardFunc`, `glutKeyboardUpFunc` | ✅ | Click the picture first. Ctrl+letter gives control codes, Esc = 27, Enter = 13 |
 | `glutSpecialFunc`, `glutSpecialUpFunc` | ✅ | Arrows, F1–F12, Page Up/Down, Home, End, Insert, and the FreeGLUT Shift/Ctrl/Alt keys |
@@ -140,7 +140,8 @@ These print a one-time warning (⚠️) or are not declared at all (❌, compile
 * `cout`, `cerr` and `printf` go to the Output panel. `cin` and `scanf` read from the **Program input** box.
 * Exceptions are disabled (`-fno-exceptions`). `throw` gives a compile error.
 * No file system: `fopen` / `ifstream` fail. No threads.
-* `<windows.h>` is a stub so lab code written on Windows still compiles. `Sleep()` does nothing.
+* `<windows.h>` is a stub so lab code written on Windows still compiles. `Sleep(ms)` works. `<dos.h>` provides `delay(ms)`.
 * `void main()` is rejected by Clang. Use `int main()`.
-* `sleep()`/`usleep()` busy-wait (at most 2 s per call). Use `glutTimerFunc` for animation.
+* Desktop-style animation inside one function works: drawing, then `glFlush()`/`glutSwapBuffers()`, then `Sleep()`/`usleep()`/a delay loop, in a `for` or `while (true)` loop. Each frame is shown as it is drawn (up to ~60 per second), and **Stop** ends an endless loop. Each sleep call waits at most 2 s.
+* Programs are compiled without optimisation (`-O0`), like a debug build in Code::Blocks, so empty delay loops really take time.
 * Programs may use up to 512 MB of memory and a 1 MB stack.

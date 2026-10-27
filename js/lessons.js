@@ -367,19 +367,24 @@ int main(int argc, char** argv)
     id: 'l07', group: 'Transformations',
     title: 'Translation',
     sub: 'glTranslatef — moving shapes',
-    objective: 'Move a shape to a new position with glTranslatef, without changing its vertices.',
+    objective: 'Move a shape to a new position with glTranslatef, without changing its vertices, and watch it move.',
     explain: `
-<p><b>Translation</b> means moving. <code>glTranslatef(tx, ty, 0)</code> moves everything drawn <i>after</i> it by <code>tx</code> to the right and <code>ty</code> up.</p>
-<p>Transformations add up. To stop one from affecting the next shapes, surround it with <code>glPushMatrix()</code> (“remember the current position”) and <code>glPopMatrix()</code> (“go back to it”).</p>
-<p>In 2D, the z value is always <code>0</code>.</p>`,
-    exercise: 'Move the green square to the top-left by changing the numbers in <code>glTranslatef</code>.',
+<p><b>Translation</b> means moving. <code>glTranslatef(tx, ty, 0)</code> moves everything drawn <i>after</i> it by <code>tx</code> to the right and <code>ty</code> up. In 2D, the z value is always <code>0</code>.</p>
+<p>In this example <code>tx</code> and <code>ty</code> change a little every frame, so the squares slide back and forth. Look at <code>drawSquare()</code>: its vertices <b>never change</b> — only the numbers given to <code>glTranslatef</code> do.</p>
+<p>Transformations add up. To stop one from affecting the next shape, surround it with <code>glPushMatrix()</code> (“remember the current position”) and <code>glPopMatrix()</code> (“go back to it”).</p>
+<p>The <code>timer()</code> function makes the picture move; you will learn how it works in Lesson 12.</p>`,
+    exercise: 'Make the green square move <b>up and down</b> instead of left and right (hint: swap the first two numbers in its <code>glTranslatef</code>).',
     mods: [
-      'Use negative numbers to move left and down.',
-      'Delete <code>glPushMatrix()</code> and <code>glPopMatrix()</code>: what happens to the blue square, and why?',
+      'Change <code>0.6f</code> to <code>0.9f</code> so the squares travel further.',
+      'Make it faster: change <code>t += 0.02f</code> to <code>t += 0.05f</code>.',
+      'Delete <code>glPushMatrix()</code> and <code>glPopMatrix()</code> around the green square: what happens to the blue one, and why?',
     ],
-    expected: 'A grey outline square in the centre (the original), a green square moved up-right, and a blue square moved down-left.',
+    expected: 'A grey outline square stays in the centre (the original). A green square slides left and right along the bottom, and a blue square slides up and down on the right.',
     code: `// Lesson 7: Translation (moving)
 #include <GL/glut.h>
+#include <cmath>
+
+float t = 0.0f;                         // time: grows a little every frame
 
 // A square of size 0.4 centred at (0, 0)
 void drawSquare()
@@ -396,50 +401,73 @@ void display()
 {
     glClear(GL_COLOR_BUFFER_BIT);
     glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();                       // start with no transformation
+    glLoadIdentity();                   // start with no transformation
 
     // Original position (grey outline)
     glColor3f(0.5f, 0.5f, 0.5f);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);   // draw outlines only
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);   // outlines only
     drawSquare();
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);   // back to filled shapes
 
-    // Moved 0.5 right and 0.4 up
-    glPushMatrix();                         // remember the current transformation
-        glTranslatef(0.5f, 0.4f, 0.0f);
+    // Green square: moves left and right (tx goes from -0.6 to +0.6 and back)
+    float tx = 0.6f * sin(t);
+    glPushMatrix();                     // remember the current transformation
+        glTranslatef(tx, -0.6f, 0.0f);
         glColor3f(0.0f, 0.8f, 0.3f);
         drawSquare();
-    glPopMatrix();                          // forget the translation
+    glPopMatrix();                      // forget the translation
 
-    // Moved 0.5 left and 0.5 down
+    // Blue square: moves up and down
+    float ty = 0.6f * cos(t);
     glPushMatrix();
-        glTranslatef(-0.5f, -0.5f, 0.0f);
+        glTranslatef(0.65f, ty, 0.0f);
         glColor3f(0.2f, 0.4f, 1.0f);
         drawSquare();
     glPopMatrix();
 
-    glFlush();
+    glutSwapBuffers();
 }
 
-${MAIN('Lesson 7: Translation')}
+void timer(int value)
+{
+    t += 0.02f;                         // move time forward a little
+    glutPostRedisplay();                // draw the picture again
+    glutTimerFunc(16, timer, 0);        // and again in 16 ms
+}
+
+int main(int argc, char** argv)
+{
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+    glutInitWindowSize(500, 500);
+    glutCreateWindow("Lesson 7: Translation");
+    glutDisplayFunc(display);
+    glutTimerFunc(16, timer, 0);        // start the movement
+    glutMainLoop();
+    return 0;
+}
 `,
   },
   {
     id: 'l08', group: 'Transformations',
     title: 'Rotation',
     sub: 'glRotatef — turning shapes',
-    objective: 'Rotate a shape around the origin and around its own centre.',
+    objective: 'Rotate a shape around the origin and around its own centre, and watch it turn.',
     explain: `
 <p><code>glRotatef(angle, 0, 0, 1)</code> turns everything drawn after it by <code>angle</code> <b>degrees</b>, anticlockwise, around the point (0, 0). The <code>0, 0, 1</code> is the z axis, the axis we turn around in 2D.</p>
-<p>A shape always rotates around <b>(0, 0)</b>. To spin a shape around its own centre, first move it to where you want it, then rotate (in code: <code>glTranslatef</code> <i>then</i> <code>glRotatef</code>).</p>`,
-    exercise: 'Change the angle of the orange triangle to <code>90</code> degrees.',
+<p>Here <code>angle</code> grows every frame, so the shapes keep turning. The orange triangle has a corner at (0, 0), so it swings around that corner.</p>
+<p>A shape always rotates around <b>(0, 0)</b>. To spin a shape around its own centre, first move it to where you want it, then rotate (in code: <code>glTranslatef</code> <i>then</i> <code>glRotatef</code>) — like the cyan square.</p>`,
+    exercise: 'Make the orange triangle turn the other way (clockwise). Hint: use <code>-angle</code>.',
     mods: [
-      'Try a negative angle: which way does it turn now?',
-      'Try <code>glRotatef(45, 0, 0, 0)</code> and read the warning in the Output panel.',
+      'Make it faster: change <code>angle += 1.0f</code> to <code>angle += 4.0f</code>.',
+      'Replace <code>angle</code> with a fixed number such as <code>45</code> to stop the movement and see one rotation.',
+      'Try <code>glRotatef(angle, 0, 0, 0)</code> and read the warning in the Output panel.',
     ],
-    expected: 'A grey outline triangle in the centre, an orange copy turned 45° around the centre, and a cyan square on the right that is turned around its own centre.',
+    expected: 'A grey outline triangle in the centre; an orange copy turns around the point (0, 0); a cyan square spins around its own centre on the bottom right.',
     code: `// Lesson 8: Rotation (turning)
 #include <GL/glut.h>
+
+float angle = 0.0f;                     // degrees: grows every frame
 
 void drawTriangle()
 {
@@ -462,32 +490,50 @@ void display()
     drawTriangle();
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-    // Rotated 45 degrees anticlockwise around (0, 0)
+    // Orange copy: rotated by 'angle' degrees around (0, 0)
     glPushMatrix();
-        glRotatef(45.0f, 0.0f, 0.0f, 1.0f);    // angle, then the axis (z)
+        glRotatef(angle, 0.0f, 0.0f, 1.0f);    // angle, then the axis (z)
         glColor3f(1.0f, 0.5f, 0.0f);
         drawTriangle();
     glPopMatrix();
 
-    // A square rotated around its OWN centre: move first, then rotate
+    // A square spinning around its OWN centre: move first, then rotate
     glPushMatrix();
         glTranslatef(0.6f, -0.5f, 0.0f);       // 2) ...then put it here
-        glRotatef(30.0f, 0.0f, 0.0f, 1.0f);    // 1) turn it while it is at (0, 0)...
+        glRotatef(2.0f * angle, 0.0f, 0.0f, 1.0f); // 1) turn it while it is at (0, 0)
         glColor3f(0.0f, 0.8f, 0.9f);
         glRectf(-0.15f, -0.15f, 0.15f, 0.15f);
     glPopMatrix();
 
-    glFlush();
+    glutSwapBuffers();
 }
 
-${MAIN('Lesson 8: Rotation')}
+void timer(int value)
+{
+    angle += 1.0f;                      // turn a little more
+    if (angle >= 360.0f) angle -= 360.0f;
+    glutPostRedisplay();
+    glutTimerFunc(16, timer, 0);
+}
+
+int main(int argc, char** argv)
+{
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+    glutInitWindowSize(500, 500);
+    glutCreateWindow("Lesson 8: Rotation");
+    glutDisplayFunc(display);
+    glutTimerFunc(16, timer, 0);
+    glutMainLoop();
+    return 0;
+}
 `,
   },
   {
     id: 'l09', group: 'Transformations',
     title: 'Scaling',
     sub: 'glScalef — resizing shapes',
-    objective: 'Make shapes bigger, smaller, stretched or mirrored with glScalef.',
+    objective: 'Make shapes bigger, smaller, stretched or mirrored with glScalef, and watch the size change.',
     explain: `
 <p><code>glScalef(sx, sy, 1)</code> multiplies every x by <code>sx</code> and every y by <code>sy</code>.</p>
 <ul>
@@ -495,17 +541,20 @@ ${MAIN('Lesson 8: Rotation')}
   <li>Different values for x and y stretch the shape.</li>
   <li>A <b>negative</b> value mirrors (flips) the shape.</li>
 </ul>
-<p>Scaling also happens around <b>(0, 0)</b>: a shape that is not at the origin also moves when it is scaled.</p>`,
-    exercise: 'Make the green copy three times as tall: <code>glScalef(1.0f, 3.0f, 1.0f)</code>.',
+<p>In this example the scale factors change smoothly over time, so you can see the shapes grow, stretch and flip. Scaling also happens around <b>(0, 0)</b>, which is why each copy is moved into place with <code>glTranslatef</code> first.</p>`,
+    exercise: 'Stop the blue house from moving and make it exactly three times as big: <code>glScalef(3.0f, 3.0f, 1.0f)</code>.',
     mods: [
-      'Use <code>glScalef(-1.0f, 1.0f, 1.0f)</code> to mirror the house left-to-right.',
+      'Make the green copy stretch up and down instead of sideways (swap the first two numbers in its <code>glScalef</code>).',
       'What happens with <code>glScalef(0, 0, 1)</code>?',
     ],
-    expected: 'A small white “house” arrow in the centre, a big blue copy (×2), a stretched green copy and a red mirrored copy upside-down.',
+    expected: 'A small white house in the centre; a blue copy that grows and shrinks; a green copy that stretches sideways; and a red copy that keeps flipping upside down.',
     code: `// Lesson 9: Scaling (resizing)
 #include <GL/glut.h>
+#include <cmath>
 
-// A small house-shaped arrow pointing up, around (0, 0)
+float t = 0.0f;                         // time: grows every frame
+
+// A small house shape around (0, 0)
 void drawHouse()
 {
     glBegin(GL_POLYGON);
@@ -523,34 +572,53 @@ void display()
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    glColor3f(1, 1, 1);                       // original size
+    glColor3f(1, 1, 1);                 // original size, in the centre
     drawHouse();
 
-    glPushMatrix();                           // twice as big, on the left
-        glTranslatef(-0.55f, 0.4f, 0.0f);
-        glScalef(2.0f, 2.0f, 1.0f);
+    float s = 1.5f + sin(t);            // goes from 0.5 to 2.5 and back
+
+    glPushMatrix();                     // grows and shrinks
+        glTranslatef(-0.55f, 0.45f, 0.0f);
+        glScalef(s, s, 1.0f);
         glColor3f(0.3f, 0.5f, 1.0f);
         drawHouse();
     glPopMatrix();
 
-    glPushMatrix();                           // stretched: 3x wide, 1x tall
+    glPushMatrix();                     // stretched sideways only
         glTranslatef(0.5f, 0.45f, 0.0f);
-        glScalef(3.0f, 1.0f, 1.0f);
+        glScalef(s, 1.0f, 1.0f);
         glColor3f(0.2f, 0.9f, 0.3f);
         drawHouse();
     glPopMatrix();
 
-    glPushMatrix();                           // mirrored upside-down (negative y)
+    glPushMatrix();                     // y scale goes negative: the house flips
         glTranslatef(0.0f, -0.55f, 0.0f);
-        glScalef(1.5f, -1.5f, 1.0f);
+        glScalef(1.5f, 1.5f * cos(t), 1.0f);
         glColor3f(1.0f, 0.3f, 0.3f);
         drawHouse();
     glPopMatrix();
 
-    glFlush();
+    glutSwapBuffers();
 }
 
-${MAIN('Lesson 9: Scaling')}
+void timer(int value)
+{
+    t += 0.03f;
+    glutPostRedisplay();
+    glutTimerFunc(16, timer, 0);
+}
+
+int main(int argc, char** argv)
+{
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+    glutInitWindowSize(500, 500);
+    glutCreateWindow("Lesson 9: Scaling");
+    glutDisplayFunc(display);
+    glutTimerFunc(16, timer, 0);
+    glutMainLoop();
+    return 0;
+}
 `,
   },
   {
@@ -560,20 +628,22 @@ ${MAIN('Lesson 9: Scaling')}
     objective: 'Combine translation, rotation and scaling, and see why the order of the calls matters.',
     explain: `
 <p>Transformations can be combined. OpenGL applies them to the shape in the <b>reverse</b> order of the code: the call written <b>closest to the drawing</b> happens <b>first</b>.</p>
-<p>So this code:</p>
-<pre><code>glTranslatef(0.5, 0, 0);
-glRotatef(45, 0, 0, 1);
-drawSquare();</code></pre>
-<p>first rotates the square (around its centre), then moves it. Swapping the two lines gives a different result: the square is moved first and then swings around (0, 0).</p>
+<p>Both squares below use the same two calls, only in a different order:</p>
+<ul>
+  <li><b>Green</b> — <code>glTranslatef</code> then <code>glRotatef</code>: the square is turned first (around its own centre), then moved. It <b>spins in place</b>.</li>
+  <li><b>Red</b> — <code>glRotatef</code> then <code>glTranslatef</code>: the square is moved first, then the whole thing turns around (0, 0). It <b>travels in a circle</b>, like a planet around the sun.</li>
+</ul>
 <p>A common recipe is: <b>Translate → Rotate → Scale → draw</b>.</p>`,
-    exercise: 'In the red block, swap the <code>glTranslatef</code> and <code>glRotatef</code> lines. Does it now match the green square?',
+    exercise: 'In the red block, swap the <code>glRotatef</code> and <code>glTranslatef</code> lines. Does it now spin in place like the green square?',
     mods: [
       'Add <code>glScalef(1.5f, 0.5f, 1.0f)</code> just before <code>drawSquare()</code> in the green block.',
-      'Change both angles to 90 and compare the two squares again.',
+      'Change <code>0.6f</code> in the red block to <code>0.3f</code>: the circle gets smaller.',
     ],
-    expected: 'A green square tilted 45° on the right of the x axis, and a red square that was moved first and then swung up around (0, 0).',
+    expected: 'A white dot at (0, 0). A green square spins in place on the right, and a red square travels in a circle around the dot.',
     code: `// Lesson 10: Combining Transformations
 #include <GL/glut.h>
+
+float angle = 0.0f;
 
 void drawSquare()
 {
@@ -586,33 +656,51 @@ void display()
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    // Order 1: translate, then rotate  -> rotate the square first, then move it
+    // Order 1: translate, then rotate  -> the square spins in place
     glPushMatrix();
         glTranslatef(0.6f, 0.0f, 0.0f);
-        glRotatef(45.0f, 0.0f, 0.0f, 1.0f);
+        glRotatef(angle, 0.0f, 0.0f, 1.0f);
         glColor3f(0.2f, 0.85f, 0.3f);          // green
         drawSquare();
     glPopMatrix();
 
-    // Order 2: rotate, then translate  -> move the square first, then swing it around (0, 0)
+    // Order 2: rotate, then translate  -> the square goes around (0, 0)
     glPushMatrix();
-        glRotatef(45.0f, 0.0f, 0.0f, 1.0f);
+        glRotatef(angle, 0.0f, 0.0f, 1.0f);
         glTranslatef(0.6f, 0.0f, 0.0f);
         glColor3f(0.95f, 0.25f, 0.25f);        // red
         drawSquare();
     glPopMatrix();
 
     // The origin (0, 0) as a white dot
-    glPointSize(6.0f);
+    glPointSize(8.0f);
     glColor3f(1, 1, 1);
     glBegin(GL_POINTS);
         glVertex2f(0.0f, 0.0f);
     glEnd();
 
-    glFlush();
+    glutSwapBuffers();
 }
 
-${MAIN('Lesson 10: Combining Transformations')}
+void timer(int value)
+{
+    angle += 1.0f;
+    if (angle >= 360.0f) angle -= 360.0f;
+    glutPostRedisplay();
+    glutTimerFunc(16, timer, 0);
+}
+
+int main(int argc, char** argv)
+{
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+    glutInitWindowSize(500, 500);
+    glutCreateWindow("Lesson 10: Combining Transformations");
+    glutDisplayFunc(display);
+    glutTimerFunc(16, timer, 0);
+    glutMainLoop();
+    return 0;
+}
 `,
   },
   {

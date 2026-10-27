@@ -5,7 +5,7 @@
 import { Program } from './runtime/program.js';
 
 let program = null;
-const post = (m) => self.postMessage(m);
+const post = (m, transfer) => self.postMessage(m, transfer || []);
 
 self.onmessage = async (e) => {
   const msg = e.data;

@@ -1,7 +1,9 @@
 /* windows.h — stub so that lab code written for Windows (Code::Blocks / Visual Studio)
- * compiles unchanged. Nothing from the Windows API is available in the browser. */
+ * compiles unchanged. Only Sleep() is provided; nothing else from the Windows API
+ * exists in the browser. */
 #ifndef _WINDOWS_H_STUB
 #define _WINDOWS_H_STUB
+#include <unistd.h>
 typedef unsigned long DWORD;
 typedef int BOOL;
 typedef void *HANDLE;
@@ -12,5 +14,6 @@ typedef void *HDC;
 #define FALSE 0
 #endif
 #define WINAPI
-static inline void Sleep(DWORD ms) { (void)ms; }
+/* Sleep(ms): waits and shows what has been drawn so far, like on Windows. */
+static inline void Sleep(DWORD ms) { usleep((useconds_t)ms * 1000u); }
 #endif

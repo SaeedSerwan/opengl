@@ -248,6 +248,37 @@ int main(int argc, char** argv){ string name; int n = 0; cin >> name >> n; cout 
   if (saveThumbs) fs.writeFileSync(path.join(root, 'docs', 'kitchen-sink.png'), PNG.sync.write(img));
   await page.click('#btn-stop');
 
+  // desktop-style animation: a loop inside display() with glFlush() + Sleep()
+  r = await runCode(page, `#include <windows.h>
+#include <GL/glut.h>
+void display() {
+    for (float x = -0.9f; x <= 0.9f; x += 0.05f) {
+        glClear(GL_COLOR_BUFFER_BIT);
+        glColor3f(1, 0, 0);
+        glRectf(x - 0.1f, -0.1f, x + 0.1f, 0.1f);
+        glFlush();
+        Sleep(30);
+    }
+}
+int main(int argc, char** argv) { glutInit(&argc, argv); glutInitWindowSize(500, 500); glutCreateWindow("loop"); glutDisplayFunc(display); glutMainLoop(); }`, { waitFrames: 0 });
+  await page.waitForTimeout(1500);
+  const loopInfo = await page.evaluate(() => ({ blits: window.__oglc.blits || 0, visible: !document.getElementById('blit').hidden }));
+  record('EXTRA H', 'Animation inside one function (loop + glFlush + Sleep) is shown frame by frame', r.compile.ok && loopInfo.blits >= 5, `${loopInfo.blits} intermediate frames shown`);
+  await page.click('#btn-stop');
+
+  // idle speed: a single-buffered idle function runs about as often as on a desktop PC
+  r = await runCode(page, `#include <GL/glut.h>
+#include <cstdio>
+long calls = 0;
+void display() { glClear(GL_COLOR_BUFFER_BIT); glFlush(); }
+void idle() { calls++; if (calls % 500 == 0) printf("calls=%ld\\n", calls); glutPostRedisplay(); }
+int main(int argc, char** argv) { glutInit(&argc, argv); glutCreateWindow("idle"); glutDisplayFunc(display); glutIdleFunc(idle); glutMainLoop(); }`);
+  await page.waitForTimeout(1500);
+  const idleLog = await page.textContent('#out-log');
+  const maxCalls = Math.max(0, ...[...idleLog.matchAll(/calls=(\d+)/g)].map((m) => +m[1]));
+  record('EXTRA I', 'glutIdleFunc runs at desktop-like speed (single buffer)', maxCalls >= 500, `${maxCalls} idle calls in about 1.5 s`);
+  await page.click('#btn-stop');
+
   // all lessons compile and draw something
   const ids = await page.evaluate(() => window.__oglc.lessons.filter((x) => x !== 'blank'));
   const failed = [];
@@ -256,7 +287,7 @@ int main(int argc, char** argv){ string name; int n = 0; cin >> name >> n; cout 
   for (const id of ids) {
     const code = await page.evaluate((x) => { window.__oglc.openLesson(x); return window.__oglc.original(x); }, id);
     process.stdout.write(`  lesson ${id}… `);
-    r = await runCode(page, code, { waitFrames: /l12|x03/.test(id) ? 30 : 1 });
+    r = await runCode(page, code, { waitFrames: /l0[789]|l1[02]|x03/.test(id) ? 30 : 1 });
     console.log(`compiled in ${(r.ms / 1000).toFixed(2)} s, ${r.frames} frame(s)`);
     img = await grab(page);
     let lit = 0;

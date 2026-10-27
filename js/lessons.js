@@ -1092,6 +1092,590 @@ int main(int argc, char** argv)
 }
 `,
   },
+  {
+    id: 'x04', group: 'Extra',
+    title: 'Game: Ghost Knight',
+    sub: 'A complete arcade game from primitives',
+    objective: 'See how a whole game is built from rectangles, triangles and circles, a timer and the keyboard.',
+    explain: `
+<p>A knight defends a haunted graveyard from ghosts and goblins. Everything you see is drawn with the same three helper functions: <code>rect()</code> (<code>GL_QUADS</code>), <code>triangle()</code> (<code>GL_TRIANGLES</code>) and <code>circle()</code> (<code>GL_TRIANGLE_FAN</code>).</p>
+<p>How a game works:</p>
+<ul>
+  <li><b>State</b> — global variables remember positions, health and score.</li>
+  <li><b>update()</b> — a timer runs about 60 times per second: it moves everything, checks for hits and then asks for a redraw.</li>
+  <li><b>display()</b> — draws the current state from back to front: background, enemies, spears, player, text.</li>
+  <li><b>Keyboard</b> — key-down sets a flag (e.g. <code>holdLeft = 1</code>), key-up clears it, so holding a key keeps the knight walking.</li>
+  <li><b>Collisions</b> — <code>overlap()</code> checks whether two rectangles touch.</li>
+</ul>
+<p><b>Click the picture</b>, then press <b>SPACE</b> to start. A/D or arrows move, SPACE jumps, Z throws a spear.</p>`,
+    exercise: 'Give the knight 10 lives instead of 5 (look in <code>resetGame()</code>).',
+    mods: [
+      'Make the knight run faster: change the <code>4</code> in <code>movePlayer()</code>.',
+      'Make the jump higher: change <code>jumpSpeed = 13</code>.',
+      'Change the moon to red by editing its colour in <code>drawBackground()</code>.',
+      'Add a third enemy type by drawing a new monster with rectangles and triangles.',
+    ],
+    expected: 'A night graveyard with a castle, a moon and stars. The knight walks and jumps; ghosts float and goblins walk towards him. Spears defeat them.',
+    code: `// ============================================================
+//  Ghost Knight - a small arcade game made only with
+//  OpenGL primitives (quads, triangles and triangle fans).
+//
+//  Click the picture first, then:
+//    SPACE  start / jump        A, D or arrows  move
+//    Z      throw a spear       R  play again after the game
+//  Score 200 points to save the graveyard!
+// ============================================================
+#include <GL/glut.h>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
+
+// ---------- window and world sizes (in pixels) ----------
+const int   WIDTH  = 900;
+const int   HEIGHT = 600;
+const float GROUND = 95.0f;      // y position of the grass line
+
+const int MAX_ENEMIES = 8;
+const int MAX_SPEARS  = 12;
+const int WIN_SCORE   = 200;
+
+// ---------- the things that move ----------
+struct Enemy {
+    float x, y;       // bottom-left corner
+    float speed;      // pixels per frame
+    int   isGhost;    // 1 = flying ghost, 0 = walking goblin
+};
+
+struct Spear {
+    float x, y;
+    float speed;      // negative = flying to the left
+    int   active;     // 0 = free slot, 1 = in the air
+};
+
+Enemy enemies[MAX_ENEMIES];
+Spear spears[MAX_SPEARS];
+
+// ---------- the player ----------
+float playerX = 150, playerY = GROUND;
+float jumpSpeed = 0;              // vertical speed while jumping
+int   facing = 1;                 // 1 = looking right, -1 = looking left
+int   onGround = 1;
+int   holdLeft = 0, holdRight = 0;
+
+// ---------- game state ----------
+int health = 5, score = 0;
+int started = 0, gameOver = 0, won = 0;
+int frame = 0;                    // counts frames, used for simple animations
+int hurtTimer = 0;                // frames of blinking after being hit
+int spearTimer = 0;               // frames until the next spear can be thrown
+
+// ============================================================
+//  Small drawing helpers - everything is built from these
+// ============================================================
+void rect(float x, float y, float w, float h, float r, float g, float b)
+{
+    glColor3f(r, g, b);
+    glBegin(GL_QUADS);                 // four corners, anticlockwise
+        glVertex2f(x,     y);
+        glVertex2f(x + w, y);
+        glVertex2f(x + w, y + h);
+        glVertex2f(x,     y + h);
+    glEnd();
+}
+
+void triangle(float x1, float y1, float x2, float y2, float x3, float y3,
+              float r, float g, float b)
+{
+    glColor3f(r, g, b);
+    glBegin(GL_TRIANGLES);
+        glVertex2f(x1, y1);
+        glVertex2f(x2, y2);
+        glVertex2f(x3, y3);
+    glEnd();
+}
+
+void circle(float cx, float cy, float radius, float r, float g, float b)
+{
+    glColor3f(r, g, b);
+    glBegin(GL_TRIANGLE_FAN);          // centre point + points around the edge
+        glVertex2f(cx, cy);
+        for (int i = 0; i <= 24; i++) {
+            float angle = i * 6.2831853f / 24;
+            glVertex2f(cx + cos(angle) * radius, cy + sin(angle) * radius);
+        }
+    glEnd();
+}
+
+void text(float x, float y, const char* s)
+{
+    glColor3f(1, 1, 1);
+    glRasterPos2f(x, y);               // where the text starts
+    while (*s)
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *s++);
+}
+
+// ============================================================
+//  Drawing the scene
+// ============================================================
+void drawBackground()
+{
+    rect(0, 0, WIDTH, HEIGHT, 0.04f, 0.05f, 0.14f);         // night sky
+
+    circle(735, 485, 48, 0.9f, 0.9f, 0.7f);                  // moon...
+    circle(755, 500, 42, 0.04f, 0.05f, 0.14f);               // ...cut by a sky circle = crescent
+
+    for (int i = 0; i < 30; i++)                             // stars at "random" fixed places
+        circle((i * 137 + 29) % WIDTH, 280 + (i * 79) % 280, 2, 0.9f, 0.9f, 1);
+
+    for (int i = 0; i < 7; i++) {                            // dark hills
+        float x = i * 155 - 30;
+        triangle(x, GROUND, x + 100, 255, x + 220, GROUND, 0.08f, 0.09f, 0.2f);
+    }
+
+    // the haunted castle: a body, two towers, two roofs, lit windows and a door
+    rect(350, GROUND, 200, 170, 0.13f, 0.13f, 0.2f);
+    rect(365, 245, 42, 90, 0.16f, 0.16f, 0.24f);
+    rect(493, 245, 42, 90, 0.16f, 0.16f, 0.24f);
+    triangle(355, 335, 386, 385, 417, 335, 0.17f, 0.17f, 0.25f);
+    triangle(483, 335, 514, 385, 545, 335, 0.17f, 0.17f, 0.25f);
+    rect(377, 275, 15, 24, 0.95f, 0.62f, 0.15f);
+    rect(506, 275, 15, 24, 0.95f, 0.62f, 0.15f);
+    rect(435, 180, 30, 45, 0.03f, 0.03f, 0.08f);
+
+    rect(0, 0, WIDTH, GROUND, 0.13f, 0.16f, 0.12f);          // earth
+    rect(0, GROUND, WIDTH, 8, 0.28f, 0.31f, 0.19f);          // grass strip
+    for (int x = 0; x < WIDTH; x += 28)                      // little grass blades
+        triangle(x, GROUND, x + 5, GROUND + 10, x + 11, GROUND, 0.18f, 0.29f, 0.14f);
+
+    for (int i = 0; i < 8; i++) {                            // gravestones with a cross line
+        float x = 35 + i * 117;
+        rect(x, GROUND, 26, 31, 0.31f, 0.33f, 0.35f);
+        circle(x + 13, GROUND + 31, 13, 0.31f, 0.33f, 0.35f);
+        rect(x + 12, GROUND + 10, 3, 12, 0.19f, 0.2f, 0.23f);
+    }
+}
+
+void drawPlayer()
+{
+    if (hurtTimer > 0 && (frame / 5) % 2 == 0)   // blink after being hit
+        return;
+
+    float x = playerX, y = playerY;
+
+    rect(x + 6,  y, 9, 19, 0.2f, 0.22f, 0.3f);          // legs
+    rect(x + 20, y, 9, 19, 0.2f, 0.22f, 0.3f);
+    rect(x + 3,  y, 14, 7, 0.45f, 0.23f, 0.12f);        // boots
+    rect(x + 18, y, 14, 7, 0.45f, 0.23f, 0.12f);
+
+    rect(x + 5, y + 18, 25, 25, 0.67f, 0.69f, 0.73f);   // armour
+    triangle(x + 8, y + 39, x + 18, y + 45, x + 28, y + 39, 0.8f, 0.18f, 0.13f);
+    rect(x,      y + 25, 8, 20, 0.62f, 0.65f, 0.69f);   // arms
+    rect(x + 28, y + 25, 8, 20, 0.62f, 0.65f, 0.69f);
+
+    rect(x + 4, y + 42, 28, 12, 0.69f, 0.72f, 0.77f);   // helmet
+    rect(x + 8, y + 49, 20, 10, 0.75f, 0.77f, 0.8f);
+    rect(x + 9, y + 45, 18, 6, 0.08f, 0.09f, 0.13f);    // visor slit
+    triangle(x + 12, y + 56, x + 24, y + 56, x + 18, y + 69, 0.8f, 0.1f, 0.1f);   // red plume
+
+    if (facing == 1) {                                  // spear in the hand, pointing forward
+        rect(x + 28, y + 28, 24, 3, 0.64f, 0.42f, 0.2f);
+        triangle(x + 52, y + 24, x + 52, y + 35, x + 63, y + 29, 0.83f, 0.86f, 0.91f);
+    } else {
+        rect(x - 17, y + 28, 24, 3, 0.64f, 0.42f, 0.2f);
+        triangle(x - 28, y + 29, x - 17, y + 24, x - 17, y + 35, 0.83f, 0.86f, 0.91f);
+    }
+}
+
+void drawGhost(const Enemy& e)
+{
+    float x = e.x, y = e.y;
+
+    circle(x + 19, y + 36, 19, 0.68f, 0.88f, 1);                        // round head
+    rect(x, y + 13, 38, 23, 0.68f, 0.88f, 1);                           // body
+    triangle(x, y + 14, x + 10, y + 3, x + 15, y + 14, 0.68f, 0.88f, 1);      // wavy bottom
+    triangle(x + 14, y + 14, x + 25, y + 3, x + 28, y + 14, 0.68f, 0.88f, 1);
+    circle(x + 12, y + 39, 4, 0.04f, 0.04f, 0.12f);                     // eyes
+    circle(x + 26, y + 39, 4, 0.04f, 0.04f, 0.12f);
+    circle(x + 19, y + 26, 4, 0.12f, 0.15f, 0.28f);                     // "oooh" mouth
+}
+
+void drawGoblin(const Enemy& e)
+{
+    float x = e.x, y = e.y;
+
+    triangle(x + 3, y + 42, x - 8, y + 53, x + 11, y + 49, 0.17f, 0.54f, 0.19f);    // pointy ears
+    triangle(x + 29, y + 49, x + 48, y + 53, x + 37, y + 42, 0.17f, 0.54f, 0.19f);
+    rect(x + 5, y + 28, 31, 23, 0.2f, 0.62f, 0.2f);                     // head
+    rect(x + 8, y + 7, 26, 25, 0.38f, 0.22f, 0.45f);                    // purple tunic
+    rect(x,      y + 16, 9, 21, 0.2f, 0.62f, 0.2f);                     // arms
+    rect(x + 33, y + 16, 9, 21, 0.2f, 0.62f, 0.2f);
+    rect(x + 7,  y, 12, 9, 0.25f, 0.16f, 0.12f);                        // feet
+    rect(x + 24, y, 12, 9, 0.25f, 0.16f, 0.12f);
+    rect(x + 10, y + 38, 8, 7, 1, 0.86f, 0.1f);                         // yellow eyes
+    rect(x + 24, y + 38, 8, 7, 1, 0.86f, 0.1f);
+    rect(x + 14, y + 30, 14, 3, 0.12f, 0.04f, 0.04f);                   // mouth
+}
+
+void drawSpear(const Spear& s)
+{
+    if (s.speed > 0) {                                  // flying right: tip on the right
+        rect(s.x, s.y, 24, 4, 0.69f, 0.43f, 0.17f);
+        triangle(s.x + 24, s.y - 3, s.x + 24, s.y + 7, s.x + 34, s.y + 2, 0.85f, 0.88f, 0.94f);
+    } else {                                            // flying left: tip on the left
+        rect(s.x + 10, s.y, 24, 4, 0.69f, 0.43f, 0.17f);
+        triangle(s.x + 10, s.y - 3, s.x + 10, s.y + 7, s.x, s.y + 2, 0.85f, 0.88f, 0.94f);
+    }
+}
+
+void drawHud()
+{
+    char line[64];
+
+    rect(0, HEIGHT - 48, WIDTH, 48, 0.02f, 0.025f, 0.07f);   // top bar
+    text(20, HEIGHT - 30, "GHOST KNIGHT");
+    sprintf(line, "Score: %d / %d", score, WIN_SCORE);
+    text(220, HEIGHT - 30, line);
+
+    text(460, HEIGHT - 30, "Health:");                       // one red heart-square per life
+    for (int i = 0; i < health; i++)
+        rect(535 + i * 22, HEIGHT - 32, 16, 16, 0.85f, 0.15f, 0.2f);
+
+    text(20, 25, "A/D or arrows: move   SPACE: jump   Z: throw spear");
+
+    if (!started || gameOver) {                              // message box in the middle
+        rect(170, 190, 560, 210, 0.04f, 0.03f, 0.09f);
+        if (!started) {
+            text(330, 330, "Click here, then press SPACE");
+            text(360, 290, "Score 200 to win!");
+        } else {
+            text(340, 345, won ? "YOU SAVED THE GRAVEYARD!" : "GAME OVER - the monsters got you!");
+            sprintf(line, "Final score: %d", score);
+            text(385, 300, line);
+            text(355, 250, "Press R to play again");
+        }
+    }
+}
+
+void display()
+{
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    drawBackground();
+
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        if (enemies[i].isGhost) drawGhost(enemies[i]);
+        else                    drawGoblin(enemies[i]);
+    }
+
+    for (int i = 0; i < MAX_SPEARS; i++)
+        if (spears[i].active)
+            drawSpear(spears[i]);
+
+    drawPlayer();
+    drawHud();
+
+    glutSwapBuffers();
+}
+
+// ============================================================
+//  Game logic
+// ============================================================
+
+// Put enemy number i somewhere off the right edge of the screen.
+void spawnEnemy(int i)
+{
+    enemies[i].x       = WIDTH + 30 + rand() % 300;
+    enemies[i].y       = GROUND;
+    enemies[i].isGhost = rand() % 2;
+    enemies[i].speed   = 1.0f + (rand() % 15) / 10.0f;   // 1.0 ... 2.4
+}
+
+void resetGame()
+{
+    playerX = 150;  playerY = GROUND;  jumpSpeed = 0;
+    facing = 1;     onGround = 1;
+    holdLeft = holdRight = 0;
+    health = 5;     score = 0;
+    gameOver = won = 0;
+    hurtTimer = spearTimer = 0;
+
+    for (int i = 0; i < MAX_SPEARS; i++)  spears[i].active = 0;
+    for (int i = 0; i < MAX_ENEMIES; i++) spawnEnemy(i);
+}
+
+void throwSpear()
+{
+    if (spearTimer > 0) return;                  // still reloading
+
+    for (int i = 0; i < MAX_SPEARS; i++) {       // find a free spear slot
+        if (spears[i].active) continue;
+        spears[i].x      = (facing == 1) ? playerX + 34 : playerX - 30;
+        spears[i].y      = playerY + 30;
+        spears[i].speed  = facing * 9;
+        spears[i].active = 1;
+        spearTimer = 15;                         // about a quarter of a second
+        return;
+    }
+}
+
+// Do two rectangles (x, y, width, height) overlap?
+int overlap(float ax, float ay, float aw, float ah,
+            float bx, float by, float bw, float bh)
+{
+    return ax < bx + bw && ax + aw > bx &&
+           ay < by + bh && ay + ah > by;
+}
+
+void movePlayer()
+{
+    if (holdLeft)  { playerX -= 4; facing = -1; }
+    if (holdRight) { playerX += 4; facing = 1; }
+
+    if (playerX < 0)          playerX = 0;           // stay inside the window
+    if (playerX > WIDTH - 34) playerX = WIDTH - 34;
+
+    if (!onGround) {                                 // jumping: simple gravity
+        playerY   += jumpSpeed;
+        jumpSpeed -= 0.65f;
+        if (playerY <= GROUND) {                     // landed
+            playerY   = GROUND;
+            jumpSpeed = 0;
+            onGround  = 1;
+        }
+    }
+}
+
+void moveSpears()
+{
+    for (int i = 0; i < MAX_SPEARS; i++) {
+        if (!spears[i].active) continue;
+        spears[i].x += spears[i].speed;
+        if (spears[i].x < -40 || spears[i].x > WIDTH + 40)
+            spears[i].active = 0;                    // left the screen
+    }
+}
+
+void moveEnemies()
+{
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        Enemy& e = enemies[i];
+
+        if (e.isGhost) e.y = GROUND + 35 + sin(frame * 0.06f + i) * 18;   // ghosts float up and down
+
+        if (e.x > playerX) e.x -= e.speed;          // walk towards the player
+        else               e.x += e.speed * 0.65f;
+
+        float w = e.isGhost ? 38 : 42;               // size of this enemy
+        float h = e.isGhost ? 40 : 53;
+
+        // did a spear hit it?
+        for (int j = 0; j < MAX_SPEARS; j++) {
+            if (spears[j].active && overlap(spears[j].x, spears[j].y, 34, 5, e.x, e.y, w, h)) {
+                spears[j].active = 0;
+                score += e.isGhost ? 10 : 20;        // goblins are worth more
+                spawnEnemy(i);
+                if (score >= WIN_SCORE) { won = 1; gameOver = 1; }
+                break;
+            }
+        }
+
+        // did it touch the player?
+        if (hurtTimer == 0 && overlap(playerX, playerY, 34, 58, e.x, e.y, w, h)) {
+            health--;
+            hurtTimer = 90;                          // 1.5 seconds of safety
+            playerX += (e.x > playerX) ? -35 : 35;   // knocked back
+            spawnEnemy(i);
+            if (health <= 0) gameOver = 1;
+        }
+
+        if (e.x < -60) spawnEnemy(i);                // walked off the left edge
+    }
+}
+
+// Called about 60 times per second.
+void update(int value)
+{
+    frame++;
+
+    if (started && !gameOver) {
+        movePlayer();
+        moveSpears();
+        moveEnemies();
+        if (hurtTimer > 0)  hurtTimer--;
+        if (spearTimer > 0) spearTimer--;
+    }
+
+    glutPostRedisplay();
+    glutTimerFunc(16, update, 0);
+}
+
+// ============================================================
+//  Keyboard
+// ============================================================
+void keyDown(unsigned char key, int x, int y)
+{
+    if (key == ' ') {
+        if (!started) { started = 1; return; }
+        if (!gameOver && onGround) { jumpSpeed = 13; onGround = 0; }
+    }
+    if (key == 'a' || key == 'A') holdLeft = 1;
+    if (key == 'd' || key == 'D') holdRight = 1;
+    if ((key == 'z' || key == 'Z') && started && !gameOver) throwSpear();
+    if ((key == 'r' || key == 'R') && gameOver) resetGame();
+    if (key == 27) exit(0);                          // Esc quits
+}
+
+void keyUp(unsigned char key, int x, int y)
+{
+    if (key == 'a' || key == 'A') holdLeft = 0;
+    if (key == 'd' || key == 'D') holdRight = 0;
+}
+
+void specialDown(int key, int x, int y)
+{
+    if (key == GLUT_KEY_LEFT)  holdLeft = 1;
+    if (key == GLUT_KEY_RIGHT) holdRight = 1;
+}
+
+void specialUp(int key, int x, int y)
+{
+    if (key == GLUT_KEY_LEFT)  holdLeft = 0;
+    if (key == GLUT_KEY_RIGHT) holdRight = 0;
+}
+
+// ============================================================
+int main(int argc, char** argv)
+{
+    srand(time(NULL));                               // different enemies every game
+
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+    glutInitWindowSize(WIDTH, HEIGHT);
+    glutCreateWindow("Ghost Knight");
+
+    glMatrixMode(GL_PROJECTION);                     // 1 unit = 1 pixel, (0,0) bottom-left
+    glLoadIdentity();
+    gluOrtho2D(0, WIDTH, 0, HEIGHT);
+    glMatrixMode(GL_MODELVIEW);
+
+    resetGame();
+
+    glutDisplayFunc(display);
+    glutKeyboardFunc(keyDown);
+    glutKeyboardUpFunc(keyUp);
+    glutSpecialFunc(specialDown);
+    glutSpecialUpFunc(specialUp);
+    glutTimerFunc(16, update, 0);
+
+    glutMainLoop();
+    return 0;
+}
+`,
+  },
+  {
+    id: 'x05', group: 'Extra',
+    title: 'Game: Flappy Square',
+    sub: 'A tiny, hard game in about 80 lines',
+    objective: 'Build a complete game with only a rectangle, a rotation, gravity and one key.',
+    explain: `
+<p>A very small version of <i>Flappy Bird</i>. The bird is a square that is <b>rotated</b> with <code>glRotatef</code> depending on its speed: nose up when rising, down when falling.</p>
+<ul>
+  <li><b>Gravity</b>: every frame <code>speed</code> goes down a little and the bird moves by <code>speed</code>.</li>
+  <li><b>Flap</b>: SPACE sets <code>speed</code> to a positive number, so the bird jumps up.</li>
+  <li><b>Pipes</b>: two rectangles with a gap. When they leave the screen they come back on the right with a new random gap, and the game gets faster.</li>
+</ul>
+<p><b>Click the picture</b>, then press <b>SPACE</b>. It is hard on purpose!</p>`,
+    exercise: 'Make the game easier: make the gap bigger by changing both <code>65</code> values to <code>90</code>.',
+    mods: [
+      'Make gravity weaker: change <code>0.7f</code> to <code>0.5f</code>.',
+      'Turn the bird into a triangle with <code>glBegin(GL_TRIANGLES)</code>.',
+      'Keep a best score in a second variable and show it next to the score.',
+    ],
+    expected: 'A yellow square in a blue sky. Pressing SPACE makes it jump and tilt; green pipes slide in from the right, faster after each point.',
+    code: `// Flappy Square: click the picture, then press SPACE to flap.
+#include <GL/glut.h>
+#include <cstdio>
+#include <cstdlib>
+
+float birdY = 300, speed = 0;      // bird height and vertical speed
+float pipeX = 400, gapY = 300;     // pipe position and the middle of its gap
+int score = 0, state = 0;          // state: 0 = waiting, 1 = flying, 2 = crashed
+
+void display()
+{
+    glClear(GL_COLOR_BUFFER_BIT);                   // paint the sky (clear colour)
+
+    glColor3f(0.2f, 0.75f, 0.2f);                   // green pipes
+    glRectf(pipeX, 0, pipeX + 60, gapY - 65);       // bottom pipe: ground up to the gap
+    glRectf(pipeX, gapY + 65, pipeX + 60, 600);     // top pipe: gap up to the sky
+
+    glPushMatrix();
+        glTranslatef(100, birdY, 0);                // move to the bird
+        glRotatef(speed * 4, 0, 0, 1);              // tilt: nose up when rising, down when falling
+        glColor3f(1, 0.8f, 0);                      // yellow
+        glRectf(-15, -15, 15, 15);                  // the bird is a 30 x 30 square
+    glPopMatrix();
+
+    char msg[40];                                   // the text at the top
+    if (state == 0)      sprintf(msg, "Press SPACE to start");
+    else if (state == 1) sprintf(msg, "Score: %d", score);
+    else                 sprintf(msg, "Crash! Score %d - SPACE", score);
+    glColor3f(1, 1, 1);
+    glRasterPos2f(10, 570);
+    for (char* c = msg; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
+
+    glutSwapBuffers();                              // show the finished frame
+}
+
+void timer(int value)
+{
+    if (state == 1) {
+        speed -= 0.7f;                              // gravity pulls down every frame
+        birdY += speed;                             // fall (or rise) by the speed
+        pipeX -= 4 + score * 0.4f;                  // pipe slides left, faster each point
+
+        if (pipeX < -60) {                          // pipe left the screen:
+            pipeX = 400;                            //   bring it back on the right,
+            gapY = 140 + rand() % 320;              //   give it a new random gap,
+            score++;                                //   and score a point
+        }
+
+        int hitsPipe = pipeX < 115 && pipeX + 60 > 85 &&                   // bird is between the pipes...
+                       (birdY - 15 < gapY - 65 || birdY + 15 > gapY + 65);  // ...but not inside the gap
+        if (hitsPipe || birdY < 15 || birdY > 585)  // crashed into a pipe, the ground or the sky
+            state = 2;
+    }
+    glutPostRedisplay();                            // draw again
+    glutTimerFunc(16, timer, 0);                    // and repeat in 16 ms (about 60 times a second)
+}
+
+void keyboard(unsigned char key, int x, int y)
+{
+    if (key != ' ') return;                         // only SPACE does something
+    if (state == 2) {                               // after a crash: reset everything
+        birdY = 300; speed = 0; pipeX = 400; score = 0;
+    }
+    state = 1;                                      // (re)start flying
+    speed = 9;                                      // flap: jump upwards
+}
+
+int main(int argc, char** argv)
+{
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+    glutInitWindowSize(400, 600);
+    glutCreateWindow("Flappy Square");
+    glClearColor(0.45f, 0.75f, 1.0f, 1.0f);         // light blue sky
+    gluOrtho2D(0, 400, 0, 600);                     // 1 unit = 1 pixel
+    glutDisplayFunc(display);
+    glutKeyboardFunc(keyboard);
+    glutTimerFunc(16, timer, 0);
+    glutMainLoop();
+    return 0;
+}
+`,
+  },
 ];
 
 export const BLANK = {
